@@ -126,7 +126,7 @@ async function initHttp(server, options, self, env, utils, gateways, beacons) {
     }
     return data;
   }), env.gatewayAuditTime);
-  self.logger.info('HTTP initialized.');
+  self.logger.info('Websocket initialized.');
 }
 
 /**
