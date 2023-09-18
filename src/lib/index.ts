@@ -13,3 +13,4 @@ export * from './IUdp';
 export * from './parseHttpRequestBody';
 export * from './addColonToMac';
 export * from './IHttpServer';
+export * from './getBeacons';
