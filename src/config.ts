@@ -1,4 +1,6 @@
-module.exports = {
+import { generateConfig } from './lib';
+
+export const config = generateConfig({
   description: 'WebSocket Broker configurations.',
   fields: [
     {
@@ -14,4 +16,4 @@ module.exports = {
       value: false,
     },
   ],
-};
+});
