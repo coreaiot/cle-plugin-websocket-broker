@@ -1,2 +1,5 @@
-/pnpm-lock.yaml
+/build
+/release
 /node_modules
+/package-lock.json
+/pnpm-lock.yaml
