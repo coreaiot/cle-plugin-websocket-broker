@@ -2,7 +2,7 @@ export * from './config';
 export * from './status';
 export * from './i18n';
 
-import { IHttpServer, IHttpServerOpt, Plugin, Utils } from './lib';
+import { IHttpServer, IHttpServerOpt, Plugin, Utils, generateDocs } from './lib';
 import { deflate } from 'zlib';
 import { readFile, writeFile } from 'fs/promises';
 import { WebSocketServer, OPEN } from 'ws';
@@ -126,3 +126,5 @@ export async function test(self: Plugin, utils: Utils) {
   console.log(config);
   self.logger.info('Test OK.');
 }
+
+export const docs = generateDocs();

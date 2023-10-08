@@ -1,0 +1,6 @@
+{
+  "name": "websocket-client-side-code-example",
+  "dependencies": {
+    "ws": "^8.13.0"
+  }
+}
