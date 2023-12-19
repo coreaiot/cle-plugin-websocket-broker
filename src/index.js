@@ -60,7 +60,6 @@ async function initHttp(server, options, self, env, utils, gateways, beacons) {
         self.status.subscribers.push({ value: ws.ip });
       }
     });
-    utils.updateStatus(self);
   }
 
   function onConnection(ws, req) {
@@ -70,14 +69,15 @@ async function initHttp(server, options, self, env, utils, gateways, beacons) {
     ws.on('error', self.logger.error);
     self.logger.info(`client ${ws.ip} connected.`);
     updateStatus();
+
+    ws.on('close', () => {
+      self.logger.info(`client ${ws.ip} disconnected.`);
+      updateStatus();
+    });
   }
 
   wss.on('connection', onConnection);
   wss2 && wss2.on('connection', onConnection);
-
-  setInterval(() => {
-    updateStatus();
-  }, 1000);
 
   const intervalfn = async (type, dataFn) => {
     if (!self.status.subscribers.length) return;
