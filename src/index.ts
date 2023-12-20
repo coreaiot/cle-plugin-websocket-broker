@@ -2,10 +2,14 @@ export * from './config';
 export * from './status';
 export * from './i18n';
 
-import { IHttpServer, IHttpServerOpt, Plugin, Utils, generateDocs } from './lib';
-import { deflate } from 'zlib';
-import { readFile, writeFile } from 'fs/promises';
+import { Plugin, Utils, generateDocs, IHttpServer, IHttpServerOpt, IGatewayResult } from '@lib';
+import { deflate, gzip } from 'zlib';
 import { WebSocketServer, OPEN } from 'ws';
+
+const DATA_FORMAT_JSON = 0;
+const DATA_FORMAT_JSON_DEFLATE = 1;
+const DATA_FORMAT_JSON_GZIP = 1;
+const DATA_FORMAT_BINARY = 3;
 
 function deflateStr(str: string) {
   return new Promise<Buffer>((r, rr) => {
@@ -45,7 +49,6 @@ export async function initHttp(self: Plugin, utils: Utils, server: IHttpServer, 
         self.status.subscribers.push({ value: ws['ip'] + ':' + ws['port'] });
       }
     });
-    utils.updateStatus(self);
   }
 
   function onConnection(ws, req) {
@@ -54,6 +57,9 @@ export async function initHttp(self: Plugin, utils: Utils, server: IHttpServer, 
       req.socket.remoteAddress;
     ws.port = req.socket.remotePort;
     ws.on('error', self.logger.error);
+    ws.on('close', () => {
+      self.logger.info(`client ${ws.ip} disconnected.`);
+    });
     self.logger.info(`client ${ws.ip} connected.`);
     updateStatus();
   }
@@ -61,62 +67,140 @@ export async function initHttp(self: Plugin, utils: Utils, server: IHttpServer, 
   wss.on('connection', onConnection);
   wss2 && wss2.on('connection', onConnection);
 
-  setInterval(() => {
-    updateStatus();
-  }, 1000);
 
-  const intervalfn = async (type, dataFn) => {
-    if (!self.status.subscribers.length) return;
-    const data = dataFn();
-    const keys = Object.keys(data);
-    if (keys.length) {
-      const json = JSON.stringify({
-        type,
-        data,
-      });
+  function hasClient() {
+    return wss.clients.size || (wss2 && wss2.clients.size);
+  }
 
-
-      const toSend = config.compress ? (await deflateStr(json)) : json;
-
-      wss.clients.forEach(client => {
-        if (client.readyState === OPEN) {
-          client.send(toSend, { binary: config.compress });
-        }
-      });
-      wss2 && wss2.clients.forEach(client => {
-        if (client.readyState === OPEN) {
-          client.send(toSend, { binary: config.compress });
-        }
-      });
-    }
-  };
-
-  setInterval(() => intervalfn('sensors', () => {
-    const now = new Date().getTime();
-    const ts = config.postOutdatedTags ? now - utils.projectEnv.beaconLifeTime : now - utils.projectEnv.beaconAuditTime;
-    const buf = utils.ca.getBeaconsBuffer(ts);
-
-    const data = {};
-    if (buf.length > 5) {
-      const bsize = buf.readUint16LE(3);
-      const n = (buf.length - 5) / bsize;
-      for (let i = 0; i < n; ++i) {
-        const b = utils.parseBeaconResult(utils.projectChannels, buf, i * bsize + 5);
-        data[b.mac] = b;
-        delete b.mac;
+  function send(data: string | Buffer, binary = false) {
+    wss.clients.forEach(client => {
+      if (client.readyState === OPEN) {
+        client.send(data, { binary });
       }
-    }
-    return data;
-  }), utils.projectEnv.beaconAuditTime);
+    });
+    wss2 && wss2.clients.forEach(client => {
+      if (client.readyState === OPEN) {
+        client.send(data, { binary });
+      }
+    });
+  }
 
-  setInterval(() => intervalfn('locators', () => {
-    const now = new Date().getTime();
-    const ts = now - utils.projectEnv.locatorLifeTime;
-    const data = utils.packGatewaysByAddr(utils.activeLocators, ts);
-    return data;
-  }), utils.projectEnv.locatorAuditTime);
+  if (config.postBeacons)
+    utils.ee.on('beacon-audit-time', () => {
+      if (!hasClient()) return;
+      const now = new Date().getTime();
+      const ts = config.postOutdatedTags ? now - utils.projectEnv.beaconLifeTime : now - utils.projectEnv.beaconAuditTime;
+      const buf = utils.ca.getBeaconsBuffer(ts);
 
-  self.logger.info('Websocket initialized.');
+      if (buf.length > 5) {
+        const bsize = buf.readUint16LE(3);
+        const n = (buf.length - 5) / bsize;
+        if (config.dataFormat === DATA_FORMAT_BINARY) {
+          send(buf, true);
+          if (self.debug)
+            self.logger.debug(n, 'beacons sent.');
+        } else {
+          const data = {};
+          for (let i = 0; i < n; ++i) {
+            const b = utils.parseBeaconResult(buf, i * bsize + 5);
+            data[b.mac] = b;
+            delete b.mac;
+          }
+          const json = JSON.stringify({
+            type: 'sensors',
+            data,
+            timestamp: now,
+          });
+          if (config.dataFormat === DATA_FORMAT_JSON_DEFLATE) {
+            deflate(Buffer.from(json), (err, out) => {
+              if (err) {
+                if (self.debug)
+                  self.logger.error(err);
+              } else {
+                send(out, true);
+                if (self.debug)
+                  self.logger.debug(n, 'beacons sent.');
+              }
+            });
+          } else if (config.dataFormat === DATA_FORMAT_JSON_GZIP) {
+            gzip(Buffer.from(json), (err, out) => {
+              if (err) {
+                if (self.debug)
+                  self.logger.error(err);
+              } else {
+                send(out, true);
+                if (self.debug)
+                  self.logger.debug(n, 'beacons sent.');
+              }
+            });
+          } else {
+            send(json);
+            if (self.debug)
+              self.logger.debug(n, 'beacons sent.');
+          }
+        }
+      }
+    });
+
+  if (config.postLocators)
+    utils.ee.on('locator-audit-time', () => {
+      if (!hasClient()) return;
+
+      const now = new Date().getTime();
+      const ts = now - utils.projectEnv.locatorLifeTime;
+      const buf = utils.ca.getLocatorsBuffer(config.postOfflineLocators ? 0 : ts);
+      if (buf.length > 5) {
+        const bsize = buf.readUint16LE(3);
+        const n = (buf.length - 5) / bsize;
+        if (config.dataFormat === DATA_FORMAT_BINARY) {
+          send(buf, true);
+          if (self.debug)
+            self.logger.debug(n, 'locators sent.');
+        } else {
+          const locators: IGatewayResult[] = [];
+          for (let i = 0; i < n; ++i) {
+            const l = utils.parseLocatorResult(buf, i * bsize + 5, ts);
+            locators.push(l);
+          }
+          const data = utils.packGatewaysByAddr(locators);
+
+          const json = JSON.stringify({
+            type: 'locators',
+            data,
+            timestamp: now,
+          });
+          if (config.dataFormat === DATA_FORMAT_JSON_DEFLATE) {
+            deflate(Buffer.from(json), (err, out) => {
+              if (err) {
+                if (self.debug)
+                  self.logger.error(err);
+              } else {
+                send(out, true);
+                if (self.debug)
+                  self.logger.debug(n, 'locators sent.');
+              }
+            });
+          } else if (config.dataFormat === DATA_FORMAT_JSON_GZIP) {
+            gzip(Buffer.from(json), (err, out) => {
+              if (err) {
+                if (self.debug)
+                  self.logger.error(err);
+              } else {
+                send(out, true);
+                if (self.debug)
+                  self.logger.debug(n, 'locators sent.');
+              }
+            });
+          } else {
+            send(json);
+            if (self.debug)
+              self.logger.debug(n, 'locators sent.');
+          }
+        }
+      }
+    });
+
+  return true;
 }
 
 export async function test(self: Plugin, utils: Utils) {
