@@ -14,5 +14,6 @@ export const i18n = generateI18n({
     'Post offline locators': '发送离线基站',
     'Subscribers': '订阅者',
     'Data Format': '数据格式',
+    'Backend': '后台',
   },
 });

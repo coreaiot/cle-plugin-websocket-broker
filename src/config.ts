@@ -4,6 +4,30 @@ export const config = generateConfig({
   description: 'WebSocket Broker configurations.',
   fields: [
     {
+      name: 'backend',
+      type: 'dropdown',
+      description: 'Backend',
+      items: [
+        {
+          label: 'Socket.IO 2.x',
+          value: 0,
+        },
+        {
+          label: 'Socket.IO 3.x',
+          value: 1,
+        },
+        {
+          label: 'Socket.IO 4.x',
+          value: 2,
+        },
+        {
+          label: 'Websocket',
+          value: -1,
+        },
+      ],
+      value: 0,
+    },
+    {
       name: 'dataFormat',
       type: 'dropdown',
       description: 'Data Format',

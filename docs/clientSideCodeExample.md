@@ -1,9 +1,9 @@
 <!-- lang zh-CN begin -->
-# 客户端代码示例
+# Websocket 客户端代码示例
 <!-- lang zh-CN end -->
 
 <!-- lang en-US begin -->
-# Client side code example
+# Websocket client side code example
 <!-- lang en-US end -->
 
 ## Node.js
@@ -20,3 +20,16 @@
 <!-- import csharp 'dotnet/Program.cs' -->
 
 <!-- import xml 'dotnet/dotnet.csproj' -->
+
+<!-- lang zh-CN begin -->
+# Socket.IO 客户端代码示例
+<!-- lang zh-CN end -->
+
+<!-- lang en-US begin -->
+# Socket.IO client side code example
+<!-- lang en-US end -->
+
+## Node.js
+<!-- import js 'nodejs/socketio.js' -->
+
+<!-- import json 'nodejs/socketio.json' -->

@@ -1,0 +1,6 @@
+{
+  "name": "socketio4-client-side-code-example",
+  "dependencies": {
+    "socket.io-client": "4"
+  }
+}

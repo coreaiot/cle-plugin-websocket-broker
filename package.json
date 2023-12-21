@@ -32,6 +32,9 @@
     "webpack-cli": "^5.0.1"
   },
   "dependencies": {
+    "socket.io.2x": "npm:socket.io@2",
+    "socket.io.3x": "npm:socket.io@3",
+    "socket.io.4x": "npm:socket.io@4",
     "ws": "^8.13.0"
   }
 }

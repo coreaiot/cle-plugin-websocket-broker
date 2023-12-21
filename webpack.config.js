@@ -31,5 +31,5 @@ module.exports = {
     filename: '[name].js',
     path: resolve(__dirname, 'build'),
   },
-  externals: ['bufferutil', 'utf-8-validate'],
+  externals: ['bufferutil', 'utf-8-validate', 'uws'],
 };

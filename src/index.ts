@@ -4,7 +4,7 @@ export * from './i18n';
 
 import { Plugin, Utils, generateDocs, IHttpServer, IHttpServerOpt, IGatewayResult } from '@lib';
 import { deflate, gzip } from 'zlib';
-import { WebSocketServer, OPEN } from 'ws';
+import { WebsocketBackend } from './WebsocketBackend';
 
 const DATA_FORMAT_JSON = 0;
 const DATA_FORMAT_JSON_DEFLATE = 1;
@@ -29,65 +29,30 @@ export async function initHttp(self: Plugin, utils: Utils, server: IHttpServer, 
 
   self.status.subscribers = [];
 
-  const wss = new WebSocketServer({
-    server: server.httpServer,
-  });
-
-  let wss2 = options.http2 ? new WebSocketServer({
-    server: server.http2Server as any,
-  }) : undefined;
+  const backend = new WebsocketBackend(config.backend, server, options);
 
   function updateStatus() {
+    const wss = backend.getClients();
+    console.log('getClients', wss.map(ws => `${ws.id} ${ws.ip}`));
     self.status.subscribers = [];
-    wss.clients.forEach(ws => {
-      if (ws.readyState === OPEN) {
-        self.status.subscribers.push({ value: ws['ip'] + ':' + ws['port'] });
-      }
-    });
-    wss2 && wss2.clients.forEach(ws => {
-      if (ws.readyState === OPEN) {
-        self.status.subscribers.push({ value: ws['ip'] + ':' + ws['port'] });
-      }
-    });
+    for (const ws of wss) {
+      self.status.subscribers.push({ value: `${ws.ip} (${ws.id})` });
+    }
   }
 
-  function onConnection(ws, req) {
-    ws.ip = req.headers['x-forwarded-for'] ?
-      req.headers['x-forwarded-for'].split(',')[0].trim() :
-      req.socket.remoteAddress;
-    ws.port = req.socket.remotePort;
-    ws.on('error', self.logger.error);
-    ws.on('close', () => {
-      self.logger.info(`client ${ws.ip} disconnected.`);
-    });
-    self.logger.info(`client ${ws.ip} connected.`);
+  backend.on('connect', ws => {
+    self.logger.info(`client ${ws.ip} ${ws.id} connected.`);
     updateStatus();
-  }
-
-  wss.on('connection', onConnection);
-  wss2 && wss2.on('connection', onConnection);
-
-
-  function hasClient() {
-    return wss.clients.size || (wss2 && wss2.clients.size);
-  }
-
-  function send(data: string | Buffer, binary = false) {
-    wss.clients.forEach(client => {
-      if (client.readyState === OPEN) {
-        client.send(data, { binary });
-      }
-    });
-    wss2 && wss2.clients.forEach(client => {
-      if (client.readyState === OPEN) {
-        client.send(data, { binary });
-      }
-    });
-  }
+  });
+  backend.on('disconnect', ws => {
+    self.logger.info(`client ${ws.ip} ${ws.id} disconnected.`);
+    updateStatus();
+  });
+  backend.on('error', self.logger.error);
 
   if (config.postBeacons)
     utils.ee.on('beacon-audit-time', () => {
-      if (!hasClient()) return;
+      if (!backend.hasClient()) return;
       const now = new Date().getTime();
       const ts = config.postOutdatedTags ? now - utils.projectEnv.beaconLifeTime : now - utils.projectEnv.beaconAuditTime;
       const buf = utils.ca.getBeaconsBuffer(ts);
@@ -96,7 +61,7 @@ export async function initHttp(self: Plugin, utils: Utils, server: IHttpServer, 
         const bsize = buf.readUint16LE(3);
         const n = (buf.length - 5) / bsize;
         if (config.dataFormat === DATA_FORMAT_BINARY) {
-          send(buf, true);
+          backend.send(buf, true);
           if (self.debug)
             self.logger.debug(n, 'beacons sent.');
         } else {
@@ -117,7 +82,7 @@ export async function initHttp(self: Plugin, utils: Utils, server: IHttpServer, 
                 if (self.debug)
                   self.logger.error(err);
               } else {
-                send(out, true);
+                backend.send(out, true);
                 if (self.debug)
                   self.logger.debug(n, 'beacons sent.');
               }
@@ -128,13 +93,13 @@ export async function initHttp(self: Plugin, utils: Utils, server: IHttpServer, 
                 if (self.debug)
                   self.logger.error(err);
               } else {
-                send(out, true);
+                backend.send(out, true);
                 if (self.debug)
                   self.logger.debug(n, 'beacons sent.');
               }
             });
           } else {
-            send(json);
+            backend.send(json);
             if (self.debug)
               self.logger.debug(n, 'beacons sent.');
           }
@@ -144,7 +109,7 @@ export async function initHttp(self: Plugin, utils: Utils, server: IHttpServer, 
 
   if (config.postLocators)
     utils.ee.on('locator-audit-time', () => {
-      if (!hasClient()) return;
+      if (!backend.hasClient()) return;
 
       const now = new Date().getTime();
       const ts = now - utils.projectEnv.locatorLifeTime;
@@ -153,7 +118,7 @@ export async function initHttp(self: Plugin, utils: Utils, server: IHttpServer, 
         const bsize = buf.readUint16LE(3);
         const n = (buf.length - 5) / bsize;
         if (config.dataFormat === DATA_FORMAT_BINARY) {
-          send(buf, true);
+          backend.send(buf, true);
           if (self.debug)
             self.logger.debug(n, 'locators sent.');
         } else {
@@ -175,7 +140,7 @@ export async function initHttp(self: Plugin, utils: Utils, server: IHttpServer, 
                 if (self.debug)
                   self.logger.error(err);
               } else {
-                send(out, true);
+                backend.send(out, true);
                 if (self.debug)
                   self.logger.debug(n, 'locators sent.');
               }
@@ -186,13 +151,13 @@ export async function initHttp(self: Plugin, utils: Utils, server: IHttpServer, 
                 if (self.debug)
                   self.logger.error(err);
               } else {
-                send(out, true);
+                backend.send(out, true);
                 if (self.debug)
                   self.logger.debug(n, 'locators sent.');
               }
             });
           } else {
-            send(json);
+            backend.send(json);
             if (self.debug)
               self.logger.debug(n, 'locators sent.');
           }
