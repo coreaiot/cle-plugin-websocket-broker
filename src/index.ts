@@ -8,7 +8,7 @@ import { WebsocketBackend } from './WebsocketBackend';
 
 const DATA_FORMAT_JSON = 0;
 const DATA_FORMAT_JSON_DEFLATE = 1;
-const DATA_FORMAT_JSON_GZIP = 1;
+const DATA_FORMAT_JSON_GZIP = 2;
 const DATA_FORMAT_BINARY = 3;
 
 function deflateStr(str: string) {
